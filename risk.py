@@ -1,18 +1,31 @@
-from config import RISK_PERCENT, LEVERAGE_CAP
+# risk.py
 
-def calculate_position(balance, entry_price, stop_price):
+BASE_RISK = 0.01
 
-    risk_amount = balance * RISK_PERCENT
-    risk_per_unit = abs(entry_price - stop_price)
+def dynamic_risk(balance, drawdown, losing_streak):
+    risk = BASE_RISK
 
-    if risk_per_unit <= 0:
+    if drawdown > 0.2:
+        risk *= 0.5
+
+    if losing_streak >= 3:
+        risk *= 0.5
+
+    return balance * risk
+
+
+def calculate_position(balance, entry_price, stop, drawdown, losing_streak):
+    risk_amount = dynamic_risk(balance, drawdown, losing_streak)
+
+    stop_distance = abs(entry_price - stop)
+
+    if stop_distance == 0:
         return 0
 
-    size = risk_amount / risk_per_unit
+    size = risk_amount / stop_distance
 
-    max_position_value = balance * LEVERAGE_CAP
-
+    max_position_value = balance * 3
     if size * entry_price > max_position_value:
         size = max_position_value / entry_price
 
-    return round(size, 4)
+    return round(size, 3)
