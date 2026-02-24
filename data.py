@@ -1,34 +1,24 @@
 import requests
 import pandas as pd
-from config import BASE_URL, SYMBOL, TIMEFRAME, EMA_PERIOD, ATR_PERIOD
+from config import SYMBOL
 
-def fetch_candles():
-    url = f"{BASE_URL}/v2/history/candles"
+BASE_URL = "https://api.delta.exchange/v2/history/candles"
+
+def fetch_candles(resolution, limit=400):
+
     params = {
         "symbol": SYMBOL,
-        "resolution": TIMEFRAME,
-        "limit": 300
+        "resolution": resolution,
+        "limit": limit
     }
 
-    r = requests.get(url, params=params)
+    r = requests.get(BASE_URL, params=params, timeout=10)
     data = r.json()
 
     df = pd.DataFrame(data["result"])
 
+    df["time"] = pd.to_datetime(df["time"], unit="s")
     numeric = ["open","high","low","close","volume"]
     df[numeric] = df[numeric].astype(float)
 
-    df["ema"] = df["close"].ewm(span=EMA_PERIOD).mean()
-
-    df["prev_close"] = df["close"].shift(1)
-    df["tr"] = df[["high","low","prev_close"]].apply(
-        lambda x: max(
-            x["high"]-x["low"],
-            abs(x["high"]-x["prev_close"]),
-            abs(x["low"]-x["prev_close"])
-        ), axis=1
-    )
-
-    df["atr"] = df["tr"].rolling(ATR_PERIOD).mean()
-
-    return df
+    return df.sort_values("time").reset_index(drop=True)
