@@ -1,7 +1,6 @@
 import time
 import threading
 import os
-from flask import Flask
 
 from delta_client import DeltaClient
 from data import fetch_candles
@@ -64,3 +63,4 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
