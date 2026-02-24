@@ -1,4 +1,8 @@
 import time
+import threading
+import os
+from flask import Flask
+
 from delta_client import DeltaClient
 from data import fetch_candles
 from strategy import generate_signal
@@ -10,35 +14,53 @@ client = DeltaClient()
 
 print("🚀 Delta India Testnet Bot Started")
 
-while True:
-    try:
-        df = fetch_candles()
 
-        signal, stop = generate_signal(df)
+def run_bot():
+    while True:
+        try:
+            df = fetch_candles()
 
-        if signal:
+            signal, stop = generate_signal(df)
 
-            balance_data = client.get_balance()
+            if signal:
 
-            # Extract USDT balance
-            balances = balance_data["result"]
-            usdt_balance = next(
-                (float(x["available_balance"]) for x in balances if x["asset_symbol"] == "USDT"),
-                0
-            )
+                balance_data = client.get_balance()
 
-            entry_price = df.iloc[-1]["close"]
-            entry_price = apply_slippage(entry_price, signal)
+                balances = balance_data["result"]
+                usdt_balance = next(
+                    (float(x["available_balance"]) for x in balances if x["asset_symbol"] == "USDT"),
+                    0
+                )
 
-            size = calculate_position(usdt_balance, entry_price, stop)
+                entry_price = df.iloc[-1]["close"]
+                entry_price = apply_slippage(entry_price, signal)
 
-            if size > 0:
-                print(f"Placing {signal.upper()} Order | Size: {size}")
-                response = client.place_market_order(SYMBOL, signal, size)
-                print(response)
+                size = calculate_position(usdt_balance, entry_price, stop)
 
-        time.sleep(60)
+                if size > 0:
+                    print(f"Placing {signal.upper()} Order | Size: {size}")
+                    response = client.place_market_order(SYMBOL, signal, size)
+                    print(response)
 
-    except Exception as e:
-        print("Error:", e)
-        time.sleep(30)
+            time.sleep(60)
+
+        except Exception as e:
+            print("Bot Error:", e)
+            time.sleep(30)
+
+
+# Start trading bot in background thread
+threading.Thread(target=run_bot).start()
+
+
+# ---- Web Server Part (Required for Render Free Plan) ----
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Delta Algo Bot Running 🚀"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
