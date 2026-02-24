@@ -77,7 +77,12 @@ def run_bot():
             state.last_candle_time = current_time
 
             balance_data = client.get_balance()
-            balances = balance_data["result"]
+            balances = balance_data.get("result", None)
+
+            if balances is None:
+            log_message(f"⚠️ Failed to fetch balance: {balance_data}")
+            time.sleep(60)
+            continue
 
             usdt_balance = next(
                 (float(x["available_balance"]) for x in balances if x["asset_symbol"]=="USDT"),0)
@@ -211,3 +216,4 @@ threading.Thread(target=run_bot, daemon=True).start()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
