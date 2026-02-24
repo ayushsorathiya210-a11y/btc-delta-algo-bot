@@ -1,27 +1,41 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+from config import EMA_PERIOD, ATR_PERIOD, ATR_ROLLING
 
-def generate_signal(df_15m, df_1h, df_4h):
+def strong_candle(df, idx):
+    r = df.iloc[idx]
+    body = abs(r["close"] - r["open"])
+    rng = r["high"] - r["low"]
+    return body > 0.5 * rng if rng != 0 else False
 
-    df_15m["ema200"] = df_15m["close"].ewm(span=200).mean()
-    df_1h["ema200"] = df_1h["close"].ewm(span=200).mean()
-    df_4h["ema200"] = df_4h["close"].ewm(span=200).mean()
+def prepare_indicators(df, df1h, df4h):
 
-    # EMA slope (4h)
-    slope = df_4h["ema200"].iloc[-1] - df_4h["ema200"].iloc[-5]
+    df["ema200"] = df["close"].ewm(span=EMA_PERIOD, adjust=False).mean()
+    df1h["ema200_1h"] = df1h["close"].ewm(span=EMA_PERIOD, adjust=False).mean()
+    df4h["ema200_4h"] = df4h["close"].ewm(span=EMA_PERIOD, adjust=False).mean()
+    df4h["ema_slope"] = df4h["ema200_4h"].diff(5)
 
-    # ATR
-    df_15m["atr"] = (df_15m["high"] - df_15m["low"]).rolling(14).mean()
-    atr_percentile = df_15m["atr"].rank(pct=True).iloc[-1]
+    df = pd.merge_asof(df.sort_values("time"),
+                       df1h[["time","ema200_1h"]].sort_values("time"),
+                       on="time", direction="backward")
 
-    # Trend alignment
-    if (
-        df_15m["close"].iloc[-1] > df_15m["ema200"].iloc[-1]
-        and df_1h["close"].iloc[-1] > df_1h["ema200"].iloc[-1]
-        and slope > 0
-        and atr_percentile > 0.7
-    ):
-        stop = df_15m["low"].iloc[-1] - 0.2 * df_15m["atr"].iloc[-1]
-        return "buy", stop
+    df = pd.merge_asof(df.sort_values("time"),
+                       df4h[["time","ema200_4h","ema_slope"]].sort_values("time"),
+                       on="time", direction="backward")
 
-    return None, None
+    df["prev_close"] = df["close"].shift(1)
+
+    df["tr"] = np.maximum.reduce([
+        df["high"] - df["low"],
+        abs(df["high"] - df["prev_close"]),
+        abs(df["low"] - df["prev_close"])
+    ])
+
+    df["atr"] = df["tr"].rolling(ATR_PERIOD).mean()
+    df["atr_pct"] = df["atr"] / df["close"]
+
+    df["atr_percentile"] = df["atr_pct"].rolling(ATR_ROLLING).apply(
+        lambda x: pd.Series(x).rank(pct=True).iloc[-1]
+    )
+
+    return df
