@@ -1,5 +1,7 @@
 import time
 import threading
+import os
+from flask import Flask
 
 from delta_client import DeltaClient
 from data import fetch_candles
@@ -17,14 +19,12 @@ def run_bot():
     while True:
         try:
             df = fetch_candles()
-
             signal, stop = generate_signal(df)
 
             if signal:
-
                 balance_data = client.get_balance()
-
                 balances = balance_data["result"]
+
                 usdt_balance = next(
                     (float(x["available_balance"]) for x in balances if x["asset_symbol"] == "USDT"),
                     0
@@ -47,5 +47,17 @@ def run_bot():
             time.sleep(30)
 
 
-# Start trading bot
-run_bot()
+# Start bot in background
+threading.Thread(target=run_bot).start()
+
+
+# ---- Tiny Web Server for Render ----
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot Running 🚀"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
