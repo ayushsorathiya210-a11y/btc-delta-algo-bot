@@ -21,11 +21,45 @@ app = Flask(__name__)
 def home():
     return "Institutional Bot Running 🚀"
 
-def run_bot():
+# --------------------- Logger Functions ---------------------
+def log_candle(row, equity):
+    msg = (
+        f"\n📊 [{row['time']}] 15-min Candle Update\n"
+        f"Open: {row['open']:.2f} | High: {row['high']:.2f} | Low: {row['low']:.2f} | Close: {row['close']:.2f} | Volume: {row['volume']:.2f}\n"
+        f"Equity: {equity:.2f} | ATR%: {row['atr_percentile']:.2f} | EMA Slope: {row['ema_slope']:.2f}\n"
+        "------------------------------------------------------------"
+    )
+    print(msg)
 
+def log_entry(state, stop):
+    msg = (
+        f"\n🚀 NEW POSITION OPENED\n"
+        f"Side: {state.position.upper()}\n"
+        f"Entry Price: {state.entry_price:.2f}\n"
+        f"Size: {state.size:.4f}\n"
+        f"Stop: {stop:.2f}\n"
+        f"Risk per Unit: {state.entry_risk:.2f}\n"
+        f"Capital: {state.capital:.2f}\n"
+        "------------------------------------------------------------"
+    )
+    print(msg)
+
+def log_exit(state, exit_price, pnl):
+    msg = (
+        f"\n🛑 POSITION CLOSED\n"
+        f"Side: {state.position.upper()}\n"
+        f"Exit Price: {exit_price:.2f}\n"
+        f"PnL: {pnl:.2f}\n"
+        f"Equity After Trade: {state.capital:.2f}\n"
+        "------------------------------------------------------------"
+    )
+    print(msg)
+
+# --------------------- Bot Loop ---------------------
+def run_bot():
     while True:
         try:
-
+            # 1️⃣ Fetch latest candles
             df = fetch_candles("15m")
             df1h = fetch_candles("1h")
             df4h = fetch_candles("4h")
@@ -36,23 +70,21 @@ def run_bot():
             prev = df.iloc[-2]
 
             current_time = row["time"]
-
             if state.last_candle_time == current_time:
                 time.sleep(60)
                 continue
-
             state.last_candle_time = current_time
 
+            # 2️⃣ Fetch balance once for equity tracking
             balance_data = client.get_balance()
-            balances = balance_data["result"]
-
+            balances = balance_data.get("result", [])
             usdt_balance = next(
-                (float(x["available_balance"]) for x in balances if x["asset_symbol"]=="USDT"),0)
-
+                (float(x["available_balance"]) for x in balances if x["asset_symbol"]=="USDT"), 0
+            )
             state.initialize(usdt_balance)
 
+            # 3️⃣ Calculate equity
             equity = state.capital
-
             if state.position == "long":
                 equity += (row["close"] - state.entry_price) * state.size
             elif state.position == "short":
@@ -62,18 +94,21 @@ def run_bot():
             current_dd = (state.peak - equity) / state.peak
             state.max_dd = max(state.max_dd, current_dd)
 
+            # 4️⃣ Log candle info
+            log_candle(row, equity)
+
             if state.cooldown > 0:
                 state.cooldown -= 1
                 time.sleep(60)
                 continue
 
+            # 5️⃣ Skip if not enough ATR or EMA slope
             if state.position is None:
-
-                if row["atr_percentile"] < 0.70 or \
-                   abs(row["ema_slope"]) <= row["close"]*0.001:
+                if row["atr_percentile"] < 0.70 or abs(row["ema_slope"]) <= row["close"]*0.001:
                     time.sleep(60)
                     continue
 
+                # 6️⃣ Entry Signals
                 long_signal = (
                     strong_candle(df, -2) and
                     strong_candle(df, -3) and
@@ -93,22 +128,12 @@ def run_bot():
                 )
 
                 if long_signal or short_signal:
-
-                    risk_pct = dynamic_risk(
-                        current_dd,
-                        state.trades,
-                        row["atr_percentile"]
-                    )
-
-                    entry_price = row["close"]*(1+SLIPPAGE) \
-                        if long_signal else row["close"]*(1-SLIPPAGE)
-
-                    stop = prev["low"] - 0.2*row["atr"] \
-                        if long_signal else prev["high"] + 0.2*row["atr"]
-
+                    risk_pct = dynamic_risk(current_dd, state.trades, row["atr_percentile"])
+                    entry_price = row["close"]*(1+SLIPPAGE) if long_signal else row["close"]*(1-SLIPPAGE)
+                    stop = prev["low"] - 0.2*row["atr"] if long_signal else prev["high"] + 0.2*row["atr"]
                     risk_per_unit = max(abs(entry_price-stop), row["atr"]*0.8)
-                    risk_capital = state.capital*risk_pct
-                    size = risk_capital/risk_per_unit
+                    risk_capital = state.capital * risk_pct
+                    size = risk_capital / risk_per_unit
 
                     if size*entry_price > state.capital*LEVERAGE_CAP:
                         size = (state.capital*LEVERAGE_CAP)/entry_price
@@ -118,6 +143,9 @@ def run_bot():
                     state.size = size
                     state.entry_risk = risk_per_unit
 
+                    log_entry(state, stop)  # <-- Log entry
+
+                    # Place order
                     client.place_market_order(
                         SYMBOL,
                         "buy" if long_signal else "sell",
@@ -125,39 +153,26 @@ def run_bot():
                     )
 
             else:
-
+                # 7️⃣ Exit Logic
                 exit_price = None
-
                 if state.position == "long":
                     stop = prev["low"] - 0.2*row["atr"]
                     if row["close"] < stop:
                         exit_price = stop
-
                 if state.position == "short":
                     stop = prev["high"] + 0.2*row["atr"]
                     if row["close"] > stop:
                         exit_price = stop
 
                 if exit_price:
-
-                    pnl = (exit_price-state.entry_price)*state.size \
-                        if state.position=="long" else \
-                        (state.entry_price-exit_price)*state.size
-
-                    fee = abs(state.size*state.entry_price)*FEE_RATE + \
-                          abs(state.size*exit_price)*FEE_RATE
-
+                    pnl = (exit_price-state.entry_price)*state.size if state.position=="long" else (state.entry_price-exit_price)*state.size
+                    fee = abs(state.size*state.entry_price)*FEE_RATE + abs(state.size*exit_price)*FEE_RATE
                     pnl -= fee
-
                     state.capital += pnl
-                    state.capital = max(state.capital,0)
-
+                    state.capital = max(state.capital, 0)
                     state.trades.append(pnl)
 
-                    if pnl < 0:
-                        state.losing_streak += 1
-                    else:
-                        state.losing_streak = 0
+                    log_exit(state, exit_price, pnl)  # <-- Log exit
 
                     client.place_market_order(
                         SYMBOL,
@@ -174,6 +189,7 @@ def run_bot():
             print("Bot Error:", e)
             time.sleep(30)
 
+# --------------------- Start Bot Thread ---------------------
 threading.Thread(target=run_bot).start()
 
 if __name__ == "__main__":
