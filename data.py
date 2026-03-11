@@ -12,13 +12,27 @@ def fetch_candles(resolution, limit=400):
         "limit": limit
     }
 
-    r = requests.get(BASE_URL, params=params, timeout=10)
-    data = r.json()
+    try:
+        r = requests.get(BASE_URL, params=params, timeout=10)
+        data = r.json()
 
-    df = pd.DataFrame(data["result"])
+        # 🔹 Check API response
+        if "result" not in data:
+            print("⚠️ Candle API Error:", data)
+            return pd.DataFrame()
 
-    df["time"] = pd.to_datetime(df["time"], unit="s")
-    numeric = ["open","high","low","close","volume"]
-    df[numeric] = df[numeric].astype(float)
+        df = pd.DataFrame(data["result"])
 
-    return df.sort_values("time").reset_index(drop=True)
+        if df.empty:
+            return df
+
+        df["time"] = pd.to_datetime(df["time"], unit="s")
+
+        numeric = ["open","high","low","close","volume"]
+        df[numeric] = df[numeric].astype(float)
+
+        return df.sort_values("time").reset_index(drop=True)
+
+    except Exception as e:
+        print("⚠️ Candle Fetch Error:", e)
+        return pd.DataFrame()
