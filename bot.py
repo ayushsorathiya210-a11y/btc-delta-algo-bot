@@ -30,6 +30,8 @@ def run_bot():
 
     while True:
 
+        log("[BOT] Checking market...")
+
         try:
 
             df = fetch_candles("15m")
@@ -148,3 +150,4 @@ def run_bot():
 
 if __name__ == "__main__":
     run_bot()
+
