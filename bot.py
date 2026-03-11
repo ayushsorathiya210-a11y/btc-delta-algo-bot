@@ -1,22 +1,24 @@
 import time
 import sys
-from delta_client import DeltaClient
+import gc
 
+from delta_client import DeltaClient
 from config import *
 from state import BotState
 from data import fetch_candles
 from strategy import prepare_indicators, strong_candle
 from risk import dynamic_risk
 
+
 client = DeltaClient()
 state = BotState()
 
-print("🚀 BACKGROUND WORKER BOT STARTED")
+print("[SYSTEM] Trading Bot Started")
 sys.stdout.flush()
 
 
-# ================= LOGGING =================
-def log_message(msg):
+def log(msg):
+
     print(msg)
     sys.stdout.flush()
 
@@ -24,49 +26,19 @@ def log_message(msg):
         f.write(msg + "\n")
 
 
-def log_candle(row, equity):
-    msg = (
-        f"[{row['time']}] 15m Candle | "
-        f"O:{row['open']:.2f} H:{row['high']:.2f} "
-        f"L:{row['low']:.2f} C:{row['close']:.2f} | "
-        f"ATR%:{row['atr_percentile']:.2f} | "
-        f"Equity:{equity:.2f}"
-    )
-    log_message(msg)
-
-
-def log_entry(position, price, size, stop, equity, risk_pct):
-    msg = (
-        f"🟢 ENTRY {position.upper()} | "
-        f"Price:{price:.2f} Size:{size:.4f} Stop:{stop:.2f} | "
-        f"Equity:{equity:.2f} Risk%:{risk_pct*100:.2f}"
-    )
-    log_message(msg)
-
-
-def log_exit(position, exit_price, pnl, equity):
-    msg = (
-        f"🔴 EXIT {position.upper()} | "
-        f"Price:{exit_price:.2f} PnL:{pnl:.2f} | "
-        f"Equity:{equity:.2f}"
-    )
-    log_message(msg)
-
-
-# ================= BOT LOOP =================
 def run_bot():
 
     while True:
 
         try:
 
-            # Fetch candles
             df = fetch_candles("15m")
             df1h = fetch_candles("1h")
             df4h = fetch_candles("4h")
 
             if df.empty or df1h.empty or df4h.empty:
-                log_message("⚠️ Candle data missing")
+
+                log("[WARN] Candle data missing")
                 time.sleep(60)
                 continue
 
@@ -77,18 +49,17 @@ def run_bot():
 
             current_time = row["time"]
 
-            # Prevent duplicate processing
             if state.last_candle_time == current_time:
                 time.sleep(30)
                 continue
 
             state.last_candle_time = current_time
 
-            # ================= BALANCE =================
             balance_data = client.get_balance()
 
-            if not balance_data or not balance_data.get("success"):
-                log_message(f"⚠️ Failed balance fetch: {balance_data}")
+            if not balance_data.get("success"):
+
+                log("[ERROR] Balance fetch failed")
                 time.sleep(60)
                 continue
 
@@ -96,7 +67,8 @@ def run_bot():
 
             usdt_balance = next(
                 (float(x["available_balance"])
-                 for x in balances if x["asset_symbol"] == "USDT"),
+                 for x in balances
+                 if x["asset_symbol"] == "USDT"),
                 0
             )
 
@@ -104,30 +76,16 @@ def run_bot():
 
             equity = state.capital
 
-            if state.position == "long":
-                equity += (row["close"] - state.entry_price) * state.size
+            log(f"[ACCOUNT] Equity:{equity}")
 
-            elif state.position == "short":
-                equity += (state.entry_price - row["close"]) * state.size
-
-            state.peak = max(state.peak, equity)
-
-            current_dd = (state.peak - equity) / state.peak
-            state.max_dd = max(state.max_dd, current_dd)
-
-            log_candle(row, equity)
-
-            # Cooldown logic
             if state.cooldown > 0:
                 state.cooldown -= 1
                 time.sleep(60)
                 continue
 
-            # ================= ENTRY =================
             if state.position is None:
 
-                if row["atr_percentile"] < 0.70 or abs(row["ema_slope"]) <= row["close"] * 0.001:
-                    time.sleep(60)
+                if row["atr_percentile"] < 0.70:
                     continue
 
                 long_signal = (
@@ -135,7 +93,6 @@ def run_bot():
                     and strong_candle(df, -3)
                     and strong_candle(df, -4)
                     and row["close"] > row["ema200"]
-                    and row["close"] > row["ema200_1h"]
                     and row["ema_slope"] > 0
                 )
 
@@ -144,48 +101,28 @@ def run_bot():
                     and strong_candle(df, -3)
                     and strong_candle(df, -4)
                     and row["close"] < row["ema200"]
-                    and row["close"] < row["ema200_1h"]
                     and row["ema_slope"] < 0
                 )
 
                 if long_signal or short_signal:
 
                     risk_pct = dynamic_risk(
-                        current_dd,
+                        0,
                         state.trades,
                         row["atr_percentile"]
                     )
 
-                    entry_price = (
-                        row["close"] * (1 + SLIPPAGE)
-                        if long_signal
-                        else row["close"] * (1 - SLIPPAGE)
-                    )
+                    entry_price = row["close"]
 
-                    stop = (
-                        prev["low"] - 0.2 * row["atr"]
-                        if long_signal
-                        else prev["high"] + 0.2 * row["atr"]
-                    )
+                    stop = prev["low"] if long_signal else prev["high"]
 
-                    risk_per_unit = max(abs(entry_price - stop), row["atr"] * 0.8)
+                    risk_per_unit = abs(entry_price - stop)
 
-                    risk_capital = state.capital * risk_pct
-
-                    size = risk_capital / risk_per_unit
-
-                    if size * entry_price > state.capital * LEVERAGE_CAP:
-                        size = (state.capital * LEVERAGE_CAP) / entry_price
-
-                    if size <= 0:
-                        log_message("⚠️ Invalid position size")
-                        time.sleep(60)
-                        continue
+                    size = (state.capital * risk_pct) / risk_per_unit
 
                     state.position = "long" if long_signal else "short"
                     state.entry_price = entry_price
                     state.size = size
-                    state.entry_risk = risk_per_unit
 
                     client.place_market_order(
                         SYMBOL,
@@ -193,76 +130,19 @@ def run_bot():
                         size
                     )
 
-                    log_entry(
-                        state.position,
-                        entry_price,
-                        size,
-                        stop,
-                        equity,
-                        risk_pct
-                    )
-
-            # ================= EXIT =================
-            else:
-
-                exit_price = None
-
-                if state.position == "long":
-                    stop = prev["low"] - 0.2 * row["atr"]
-                    if row["close"] < stop:
-                        exit_price = stop
-
-                if state.position == "short":
-                    stop = prev["high"] + 0.2 * row["atr"]
-                    if row["close"] > stop:
-                        exit_price = stop
-
-                if exit_price:
-
-                    pnl = (
-                        (exit_price - state.entry_price) * state.size
-                        if state.position == "long"
-                        else (state.entry_price - exit_price) * state.size
-                    )
-
-                    fee = (
-                        abs(state.size * state.entry_price) * FEE_RATE
-                        + abs(state.size * exit_price) * FEE_RATE
-                    )
-
-                    pnl -= fee
-
-                    state.capital += pnl
-                    state.capital = max(state.capital, 0)
-
-                    state.trades.append(pnl)
-
-                    if pnl < 0:
-                        state.losing_streak += 1
-                    else:
-                        state.losing_streak = 0
-
-                    client.place_market_order(
-                        SYMBOL,
-                        "sell" if state.position == "long" else "buy",
-                        state.size
-                    )
-
-                    log_exit(
-                        state.position,
-                        exit_price,
-                        pnl,
-                        state.capital
-                    )
-
-                    state.position = None
-                    state.cooldown = COOLDOWN_BARS
+                    log(f"[TRADE] ENTRY {state.position} size:{size}")
 
             time.sleep(60)
 
+            del df
+            del df1h
+            del df4h
+
+            gc.collect()
+
         except Exception as e:
 
-            log_message(f"Bot Error: {e}")
+            log(f"[CRASH] {str(e)}")
             time.sleep(30)
 
 
