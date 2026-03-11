@@ -25,6 +25,8 @@ def fetch_candles(resolution="15m", limit=400):
         r = requests.get(CANDLE_URL, params=params, timeout=10)
         data = r.json()
 
+        print("CANDLE RESPONSE:", data)  # debug
+
         if not data.get("success"):
             print("⚠️ Candle API Error:", data)
             return pd.DataFrame()
@@ -32,11 +34,11 @@ def fetch_candles(resolution="15m", limit=400):
         df = pd.DataFrame(data["result"])
 
         if df.empty:
-            return df
+            return pd.DataFrame()
 
         df["time"] = pd.to_datetime(df["time"], unit="s")
 
-        numeric = ["open","high","low","close","volume"]
+        numeric = ["open", "high", "low", "close", "volume"]
         df[numeric] = df[numeric].astype(float)
 
         return df.sort_values("time").reset_index(drop=True)
