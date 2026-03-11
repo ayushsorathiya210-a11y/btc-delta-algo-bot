@@ -5,8 +5,10 @@ from config import SYMBOL
 
 BASE_URL = "https://api.delta.exchange/v2/history/candles"
 
-def fetch_candles(resolution, limit=400):
+def fetch_candles(resolution="15m", limit=400):
 
+    now = int(time.time())
+    
     # seconds per candle
     sec_map = {
         "15m": 900,
@@ -14,8 +16,8 @@ def fetch_candles(resolution, limit=400):
         "4h": 14400
     }
 
-    end = int(time.time())
-    start = end - (limit * sec_map[resolution])
+    end = now
+    start = now - (limit * sec_map[resolution])
 
     params = {
         "symbol": SYMBOL,
