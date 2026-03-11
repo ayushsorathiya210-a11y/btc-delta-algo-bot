@@ -7,21 +7,19 @@ BASE_URL = "https://api.delta.exchange/v2/history/candles"
 
 def fetch_candles(resolution, limit=400):
 
-    # convert resolution to seconds
-    res_map = {
+    # seconds per candle
+    sec_map = {
         "15m": 900,
         "1h": 3600,
         "4h": 14400
     }
 
-    res_seconds = res_map[resolution]
-
     end = int(time.time())
-    start = end - (limit * res_seconds)
+    start = end - (limit * sec_map[resolution])
 
     params = {
         "symbol": SYMBOL,
-        "resolution": res_seconds,
+        "resolution": resolution,
         "start": start,
         "end": end
     }
