@@ -13,23 +13,24 @@ class DeltaClient:
         self.base_url = BASE_URL
 
     def _generate_headers(self, method, path, body=""):
+        
 
-    timestamp = str(int(time.time()))
+        timestamp = str(int(time.time()))
 
-    message = timestamp + method + path + body
+        message = timestamp + method + path + body
 
-    signature = hmac.new(
-        API_SECRET.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
+        signature = hmac.new(
+            API_SECRET.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).hexdigest()
 
-    return {
-        "api-key": API_KEY,
-        "timestamp": timestamp,
-        "signature": signature,
-        "Content-Type": "application/json"
-    }
+        return {
+            "api-key": API_KEY,
+            "timestamp": timestamp,
+            "signature": signature,
+            "Content-Type": "application/json"
+        }
 
     def get_balance(self):
 
@@ -92,4 +93,5 @@ class DeltaClient:
             print("[ERROR] Order request failed:", str(e))
 
             return {"success": False, "error": str(e)}
+
 
