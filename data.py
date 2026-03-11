@@ -1,23 +1,18 @@
 import requests
 import pandas as pd
 import time
-from config import SYMBOL
-
-BASE_URL = "https://api.delta.exchange/v2/history/candles"
+from config import SYMBOL, CANDLE_URL
 
 def fetch_candles(resolution="15m", limit=400):
 
-    now = int(time.time())
-    
-    # seconds per candle
     sec_map = {
         "15m": 900,
         "1h": 3600,
         "4h": 14400
     }
 
-    end = now
-    start = now - (limit * sec_map[resolution])
+    end = int(time.time())
+    start = end - (limit * sec_map[resolution])
 
     params = {
         "symbol": SYMBOL,
@@ -27,7 +22,7 @@ def fetch_candles(resolution="15m", limit=400):
     }
 
     try:
-        r = requests.get(BASE_URL, params=params, timeout=10)
+        r = requests.get(CANDLE_URL, params=params, timeout=10)
         data = r.json()
 
         if not data.get("success"):
