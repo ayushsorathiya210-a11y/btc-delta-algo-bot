@@ -5,6 +5,9 @@ import hashlib
 import json
 from config import API_KEY, API_SECRET, BASE_URL
 
+print("DEBUG API_KEY:", API_KEY)
+print("DEBUG API_SECRET:", API_SECRET)
+
 class DeltaClient:
 
     def __init__(self):
@@ -54,4 +57,5 @@ class DeltaClient:
         headers = self._generate_headers("POST", path, body_json)
 
         response = requests.post(url, headers=headers, data=body_json)
+
         return response.json()
