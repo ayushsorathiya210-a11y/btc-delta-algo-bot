@@ -1,9 +1,11 @@
 import os
 
 # =====================================
-# DELTA INDIA TESTNET (DEMO)
+# DELTA INDIA DEMO (TESTNET)
 # =====================================
+
 BASE_URL = "https://cdn-ind.testnet.deltaex.org"
+CANDLE_URL = "https://cdn-ind.testnet.deltaex.org/v2/history/candles"
 
 API_KEY = os.getenv("DELTA_API_KEY")
 API_SECRET = os.getenv("DELTA_API_SECRET")
