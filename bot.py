@@ -64,6 +64,11 @@ def run_bot():
             df1h = fetch_candles("1h")
             df4h = fetch_candles("4h")
 
+            if df.empty or df1h.empty or df4h.empty:
+                log_message("⚠️ Candle data missing")
+                time.sleep(60)
+                continue
+
             df = prepare_indicators(df, df1h, df4h)
 
             row = df.iloc[-1]
@@ -251,3 +256,4 @@ def run_bot():
 
 if __name__ == "__main__":
     run_bot()
+
