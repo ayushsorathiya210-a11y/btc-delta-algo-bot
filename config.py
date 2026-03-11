@@ -10,7 +10,7 @@ CANDLE_URL = "https://cdn-ind.testnet.deltaex.org/v2/history/candles"
 API_KEY = os.getenv("DELTA_API_KEY")
 API_SECRET = os.getenv("DELTA_API_SECRET")
 
-SYMBOL = "BTCUSDT"
+SYMBOL = "BTCUSD"
 
 EMA_PERIOD = 200
 ATR_PERIOD = 14
@@ -24,3 +24,4 @@ FEE_RATE = 0.0004
 SLIPPAGE = 0.0005
 
 COOLDOWN_BARS = 6
+
