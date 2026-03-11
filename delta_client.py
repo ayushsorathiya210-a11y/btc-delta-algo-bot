@@ -1,9 +1,7 @@
 import requests
 import time
-import hmac
 import hashlib
-import json
-
+import hmac
 from config import API_KEY, API_SECRET, BASE_URL
 
 
@@ -12,18 +10,19 @@ class DeltaClient:
     def __init__(self):
         self.base_url = BASE_URL
 
-    def _generate_headers(self, method, path, body=""):
-        
+    def _generate_signature(self, method, timestamp, path, query_string="", body=""):
 
-        timestamp = str(int(time.time()))
-
-        message = timestamp + method + path + body
+        message = method + timestamp + path + query_string + body
 
         signature = hmac.new(
             API_SECRET.encode(),
             message.encode(),
             hashlib.sha256
         ).hexdigest()
+
+        return signature
+
+    def _headers(self, signature, timestamp):
 
         return {
             "api-key": API_KEY,
@@ -32,66 +31,53 @@ class DeltaClient:
             "Content-Type": "application/json"
         }
 
+    # =========================
+    # GET BALANCE
+    # =========================
     def get_balance(self):
 
+        method = "GET"
         path = "/v2/wallet/balances"
+        query_string = ""
+        body = ""
+
+        timestamp = str(int(time.time()))
+
+        signature = self._generate_signature(
+            method, timestamp, path, query_string, body
+        )
+
+        headers = self._headers(signature, timestamp)
+
         url = self.base_url + path
 
-        headers = self._generate_headers("GET", path)
+        r = requests.get(url, headers=headers)
 
-        try:
+        print("[API] Balance status:", r.status_code)
 
-            r = requests.get(url, headers=headers, timeout=10)
+        return r.json()
 
-            print("[API] Balance status:", r.status_code)
+    # =========================
+    # PLACE ORDER
+    # =========================
+    def place_order(self, symbol, side, size):
 
-            data = r.json()
-
-            if not data.get("success"):
-                print("[ERROR] Balance API:", data)
-
-            return data
-
-        except Exception as e:
-
-            print("[ERROR] Balance request failed:", str(e))
-
-            return {"success": False, "error": str(e)}
-
-    def place_market_order(self, symbol, side, size):
-
+        method = "POST"
         path = "/v2/orders"
+        query_string = ""
+
+        body = f'{{"product_id":1,"size":{size},"side":"{side}","order_type":"market_order"}}'
+
+        timestamp = str(int(time.time()))
+
+        signature = self._generate_signature(
+            method, timestamp, path, query_string, body
+        )
+
+        headers = self._headers(signature, timestamp)
+
         url = self.base_url + path
 
-        body = {
-            "symbol": symbol,
-            "side": side,
-            "order_type": "market",
-            "size": size,
-            "time_in_force": "IOC"
-        }
+        r = requests.post(url, headers=headers, data=body)
 
-        body_json = json.dumps(body)
-
-        headers = self._generate_headers("POST", path, body_json)
-
-        try:
-
-            r = requests.post(
-                url,
-                headers=headers,
-                data=body_json,
-                timeout=10
-            )
-
-            print("[API] Order status:", r.status_code)
-
-            return r.json()
-
-        except Exception as e:
-
-            print("[ERROR] Order request failed:", str(e))
-
-            return {"success": False, "error": str(e)}
-
-
+        return r.json()
