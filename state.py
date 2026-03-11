@@ -1,5 +1,7 @@
 class BotState:
+
     def __init__(self):
+
         self.capital = None
         self.peak = None
         self.max_dd = 0
@@ -16,6 +18,7 @@ class BotState:
         self.losing_streak = 0
 
     def initialize(self, balance):
+
         if self.capital is None:
             self.capital = balance
             self.peak = balance
