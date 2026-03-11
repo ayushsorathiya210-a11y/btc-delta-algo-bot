@@ -1,12 +1,14 @@
 import os
 
-# =====================================
+# ===============================
 # DELTA INDIA DEMO (TESTNET)
-# =====================================
+# ===============================
 
 BASE_URL = "https://cdn-ind.testnet.deltaex.org"
-CANDLE_URL = "https://cdn-ind.testnet.deltaex.org/v2/history/candles"
+
+CANDLE_URL = BASE_URL + "/v2/history/candles"
 BALANCE_URL = BASE_URL + "/v2/wallet/balances"
+ORDER_URL = BASE_URL + "/v2/orders"
 
 API_KEY = os.getenv("DELTA_API_KEY")
 API_SECRET = os.getenv("DELTA_API_SECRET")
@@ -25,5 +27,4 @@ FEE_RATE = 0.0004
 SLIPPAGE = 0.0005
 
 COOLDOWN_BARS = 6
-
-
+API_SLEEP = 1
