@@ -60,6 +60,7 @@ def run_bot():
 
         try:
 
+            # Fetch candles
             df = fetch_candles("15m")
             df1h = fetch_candles("1h")
             df4h = fetch_candles("4h")
@@ -76,23 +77,27 @@ def run_bot():
 
             current_time = row["time"]
 
+            # Prevent duplicate processing
             if state.last_candle_time == current_time:
-                time.sleep(60)
+                time.sleep(30)
                 continue
 
             state.last_candle_time = current_time
 
+            # ================= BALANCE =================
             balance_data = client.get_balance()
-            balances = balance_data.get("result", None)
 
-            if balances is None:
+            if not balance_data or not balance_data.get("success"):
                 log_message(f"⚠️ Failed balance fetch: {balance_data}")
                 time.sleep(60)
                 continue
 
+            balances = balance_data["result"]
+
             usdt_balance = next(
                 (float(x["available_balance"])
-                 for x in balances if x["asset_symbol"] == "USDT"), 0
+                 for x in balances if x["asset_symbol"] == "USDT"),
+                0
             )
 
             state.initialize(usdt_balance)
@@ -106,11 +111,13 @@ def run_bot():
                 equity += (state.entry_price - row["close"]) * state.size
 
             state.peak = max(state.peak, equity)
+
             current_dd = (state.peak - equity) / state.peak
             state.max_dd = max(state.max_dd, current_dd)
 
             log_candle(row, equity)
 
+            # Cooldown logic
             if state.cooldown > 0:
                 state.cooldown -= 1
                 time.sleep(60)
@@ -169,6 +176,11 @@ def run_bot():
 
                     if size * entry_price > state.capital * LEVERAGE_CAP:
                         size = (state.capital * LEVERAGE_CAP) / entry_price
+
+                    if size <= 0:
+                        log_message("⚠️ Invalid position size")
+                        time.sleep(60)
+                        continue
 
                     state.position = "long" if long_signal else "short"
                     state.entry_price = entry_price
@@ -256,4 +268,3 @@ def run_bot():
 
 if __name__ == "__main__":
     run_bot()
-
