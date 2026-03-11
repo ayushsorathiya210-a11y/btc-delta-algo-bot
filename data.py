@@ -1,7 +1,9 @@
 import requests
 import pandas as pd
 import time
+
 from config import SYMBOL, CANDLE_URL
+
 
 def fetch_candles(resolution="15m", limit=400):
 
@@ -17,7 +19,7 @@ def fetch_candles(resolution="15m", limit=400):
     }
 
     if resolution not in sec_map:
-        print("⚠️ Invalid resolution:", resolution)
+        print("[ERROR] Invalid resolution:", resolution)
         return pd.DataFrame()
 
     end = int(time.time())
@@ -31,34 +33,46 @@ def fetch_candles(resolution="15m", limit=400):
     }
 
     try:
-        r = requests.get(CANDLE_URL, params=params, timeout=10)
+
+        r = requests.get(
+            CANDLE_URL,
+            params=params,
+            timeout=10
+        )
+
         r.raise_for_status()
 
         data = r.json()
 
         if not data.get("success"):
-            print("⚠️ Candle API Error:", data)
+            print("[ERROR] Candle API:", data)
             return pd.DataFrame()
 
         candles = data.get("result", [])
 
         if not candles:
-            print("⚠️ Candle data missing")
+            print("[WARN] Candle data empty")
             return pd.DataFrame()
 
-        print(f"📊 Candles received: {len(candles)}")
+        print(
+            f"[DATA] Candle Fetch | "
+            f"Symbol:{SYMBOL} | "
+            f"TF:{resolution} | "
+            f"Count:{len(candles)}"
+        )
 
         df = pd.DataFrame(candles)
 
         df["time"] = pd.to_datetime(df["time"], unit="s")
 
-        numeric_cols = ["open", "high", "low", "close", "volume"]
-        df[numeric_cols] = df[numeric_cols].astype(float)
+        numeric = ["open", "high", "low", "close", "volume"]
 
-        df = df.sort_values("time").reset_index(drop=True)
+        df[numeric] = df[numeric].astype(float)
 
-        return df
+        return df.sort_values("time").reset_index(drop=True)
 
-    except requests.exceptions.RequestException as e:
-        print("⚠️ Candle Fetch Error:", e)
+    except Exception as e:
+
+        print("[ERROR] Candle fetch failed:", str(e))
+
         return pd.DataFrame()
