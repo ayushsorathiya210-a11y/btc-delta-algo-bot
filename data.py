@@ -7,12 +7,21 @@ BASE_URL = "https://api.delta.exchange/v2/history/candles"
 
 def fetch_candles(resolution, limit=400):
 
+    # convert resolution to seconds
+    res_map = {
+        "15m": 900,
+        "1h": 3600,
+        "4h": 14400
+    }
+
+    res_seconds = res_map[resolution]
+
     end = int(time.time())
-    start = end - (limit * resolution_to_seconds(resolution))
+    start = end - (limit * res_seconds)
 
     params = {
         "symbol": SYMBOL,
-        "resolution": resolution,
+        "resolution": res_seconds,
         "start": start,
         "end": end
     }
@@ -40,19 +49,3 @@ def fetch_candles(resolution, limit=400):
     except Exception as e:
         print("⚠️ Candle Fetch Error:", e)
         return pd.DataFrame()
-
-
-def resolution_to_seconds(res):
-
-    mapping = {
-        "1m": 60,
-        "5m": 300,
-        "15m": 900,
-        "30m": 1800,
-        "1h": 3600,
-        "2h": 7200,
-        "4h": 14400,
-        "1d": 86400
-    }
-
-    return mapping.get(res, 900)
