@@ -9,7 +9,6 @@ from data import fetch_candles
 from strategy import prepare_indicators, strong_candle
 from risk import dynamic_risk
 
-
 client = DeltaClient()
 state = BotState()
 
@@ -26,11 +25,28 @@ def log(msg):
         f.write(msg + "\n")
 
 
+def manage_position(price):
+
+    if state.position == "long" and price <= state.stop:
+
+        log("[EXIT] Stop Loss Hit")
+
+        client.place_order(SYMBOL, "sell", state.size)
+
+        state.position = None
+
+    elif state.position == "short" and price >= state.stop:
+
+        log("[EXIT] Stop Loss Hit")
+
+        client.place_order(SYMBOL, "buy", state.size)
+
+        state.position = None
+
+
 def run_bot():
 
     while True:
-
-        log("[BOT] Checking market...")
 
         try:
 
@@ -39,9 +55,7 @@ def run_bot():
             df4h = fetch_candles("4h")
 
             if df.empty or df1h.empty or df4h.empty:
-
-                log("[WARN] Candle data missing")
-                time.sleep(60)
+                time.sleep(API_SLEEP)
                 continue
 
             df = prepare_indicators(df, df1h, df4h)
@@ -49,20 +63,23 @@ def run_bot():
             row = df.iloc[-1]
             prev = df.iloc[-2]
 
+            price = row["close"]
+
+            if state.position:
+                manage_position(price)
+
             current_time = row["time"]
 
-            if state.last_candle_time == current_time:
-                time.sleep(30)
-                continue
+            if state.last_candle_time != current_time:
 
-            state.last_candle_time = current_time
+                state.last_candle_time = current_time
+
+                log(f"[BOT] New 15m Candle {current_time}")
 
             balance_data = client.get_balance()
 
             if not balance_data.get("success"):
-
-                log("[ERROR] Balance fetch failed")
-                time.sleep(60)
+                time.sleep(API_SLEEP)
                 continue
 
             balances = balance_data["result"]
@@ -76,25 +93,17 @@ def run_bot():
 
             state.initialize(usdt_balance)
 
-            equity = state.capital
-
-            log(f"[ACCOUNT] Equity:{equity}")
-
-            if state.cooldown > 0:
-                state.cooldown -= 1
-                time.sleep(60)
-                continue
-
             if state.position is None:
 
                 if row["atr_percentile"] < 0.70:
+                    time.sleep(API_SLEEP)
                     continue
 
                 long_signal = (
                     strong_candle(df, -2)
                     and strong_candle(df, -3)
                     and strong_candle(df, -4)
-                    and row["close"] > row["ema200"]
+                    and price > row["ema200"]
                     and row["ema_slope"] > 0
                 )
 
@@ -102,11 +111,20 @@ def run_bot():
                     strong_candle(df, -2)
                     and strong_candle(df, -3)
                     and strong_candle(df, -4)
-                    and row["close"] < row["ema200"]
+                    and price < row["ema200"]
                     and row["ema_slope"] < 0
                 )
 
                 if long_signal or short_signal:
+
+                    entry_price = price
+
+                    stop = prev["low"] if long_signal else prev["high"]
+
+                    risk_per_unit = abs(entry_price - stop)
+
+                    if risk_per_unit == 0:
+                        continue
 
                     risk_pct = dynamic_risk(
                         0,
@@ -114,19 +132,14 @@ def run_bot():
                         row["atr_percentile"]
                     )
 
-                    entry_price = row["close"]
-
-                    stop = prev["low"] if long_signal else prev["high"]
-
-                    risk_per_unit = abs(entry_price - stop)
-
                     size = (state.capital * risk_pct) / risk_per_unit
 
                     state.position = "long" if long_signal else "short"
                     state.entry_price = entry_price
                     state.size = size
+                    state.stop = stop
 
-                    client.place_market_order(
+                    client.place_order(
                         SYMBOL,
                         "buy" if long_signal else "sell",
                         size
@@ -134,11 +147,7 @@ def run_bot():
 
                     log(f"[TRADE] ENTRY {state.position} size:{size}")
 
-            time.sleep(60)
-
-            del df
-            del df1h
-            del df4h
+            time.sleep(API_SLEEP)
 
             gc.collect()
 
@@ -150,4 +159,3 @@ def run_bot():
 
 if __name__ == "__main__":
     run_bot()
-
