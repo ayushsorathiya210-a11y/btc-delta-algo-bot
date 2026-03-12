@@ -10,9 +10,9 @@ class DeltaClient:
     def __init__(self):
         self.base_url = BASE_URL
 
-    def _generate_signature(self, method, timestamp, path, query_string="", body=""):
+    def _generate_signature(self, method, timestamp, path, body=""):
 
-        message = method + timestamp + path + query_string + body
+        message = method + timestamp + path + body
 
         signature = hmac.new(
             API_SECRET.encode(),
@@ -31,53 +31,34 @@ class DeltaClient:
             "Content-Type": "application/json"
         }
 
-    # =========================
-    # GET BALANCE
-    # =========================
     def get_balance(self):
 
-        method = "GET"
         path = "/v2/wallet/balances"
-        query_string = ""
-        body = ""
+        method = "GET"
 
         timestamp = str(int(time.time()))
 
-        signature = self._generate_signature(
-            method, timestamp, path, query_string, body
-        )
+        signature = self._generate_signature(method, timestamp, path)
 
         headers = self._headers(signature, timestamp)
 
-        url = self.base_url + path
-
-        r = requests.get(url, headers=headers)
-
-        print("[API] Balance status:", r.status_code)
+        r = requests.get(self.base_url + path, headers=headers)
 
         return r.json()
 
-    # =========================
-    # PLACE ORDER
-    # =========================
     def place_order(self, symbol, side, size):
 
-        method = "POST"
         path = "/v2/orders"
-        query_string = ""
+        method = "POST"
 
         body = f'{{"product_id":1,"size":{size},"side":"{side}","order_type":"market_order"}}'
 
         timestamp = str(int(time.time()))
 
-        signature = self._generate_signature(
-            method, timestamp, path, query_string, body
-        )
+        signature = self._generate_signature(method, timestamp, path, body)
 
         headers = self._headers(signature, timestamp)
 
-        url = self.base_url + path
-
-        r = requests.post(url, headers=headers, data=body)
+        r = requests.post(self.base_url + path, headers=headers, data=body)
 
         return r.json()
